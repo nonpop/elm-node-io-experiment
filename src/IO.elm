@@ -37,6 +37,11 @@ do (IO c) f =
     IO (\k -> c (\a -> unwrap (f a) k))
 
 
+do_ : IO () -> IO b -> IO b
+do_ io1 io2 =
+    do io1 (\() -> io2)
+
+
 unwrap : IO a -> (a -> Action) -> Action
 unwrap (IO c) =
     c
@@ -70,26 +75,6 @@ call action arg resultDecoder =
 call_ : String -> Encode.Value -> IO ()
 call_ action arg =
     do (IO (Next action arg)) <| decodeResult (Decode.succeed ())
-
-
-getArgs : IO (List String)
-getArgs =
-    call "getArgs" Encode.null (Decode.list Decode.string)
-
-
-getLine : IO String
-getLine =
-    call "getLine" Encode.null Decode.string
-
-
-putStrLn : String -> IO ()
-putStrLn str =
-    call_ "putStrLn" (Encode.string str)
-
-
-do_ : IO () -> IO b -> IO b
-do_ io1 io2 =
-    do io1 (\() -> io2)
 
 
 type alias JsonValue =
@@ -167,3 +152,22 @@ run ports io =
         , update = update ports
         , subscriptions = subscriptions ports
         }
+
+
+
+--- ACTIONS
+
+
+getArgs : IO (List String)
+getArgs =
+    call "getArgs" Encode.null (Decode.list Decode.string)
+
+
+getLine : IO String
+getLine =
+    call "getLine" Encode.null Decode.string
+
+
+putStrLn : String -> IO ()
+putStrLn str =
+    call_ "putStrLn" (Encode.string str)
