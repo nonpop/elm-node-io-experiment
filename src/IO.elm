@@ -7,6 +7,7 @@ module IO exposing
     , do_
     , getArgs
     , getLine
+    , lazy
     , putStrLn
     , return
     , run
@@ -39,6 +40,11 @@ do (IO c) f =
 unwrap : IO a -> (a -> Action) -> Action
 unwrap (IO c) =
     c
+
+
+lazy : (() -> IO a) -> IO a
+lazy mkIO =
+    IO (\k -> unwrap (mkIO ()) k)
 
 
 type Action
