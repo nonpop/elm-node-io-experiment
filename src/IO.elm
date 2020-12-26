@@ -26,6 +26,11 @@ return value =
     IO (\k -> k value)
 
 
+fail : String -> IO a
+fail err =
+    IO (\_ -> Stop (Just err))
+
+
 do : IO a -> (a -> IO b) -> IO b
 do (IO c) f =
     IO (\k -> c (\a -> unwrap (f a) k))
@@ -37,25 +42,43 @@ unwrap (IO c) =
 
 
 type Action
-    = Stop
-    | GetArgs (List String -> Action)
-    | GetLine (String -> Action)
-    | PutStrLn String (() -> Action)
+    = Stop (Maybe String)
+    | Next String Encode.Value (Decode.Value -> Action)
+
+
+decodeResult : Decoder a -> Decode.Value -> IO a
+decodeResult decoder value =
+    case Decode.decodeValue decoder value of
+        Ok res ->
+            return res
+
+        Err err ->
+            fail ("Decode error: " ++ Decode.errorToString err)
+
+
+call : String -> Encode.Value -> Decoder a -> IO a
+call action arg resultDecoder =
+    do (IO (Next action arg)) <| decodeResult resultDecoder
+
+
+call_ : String -> Encode.Value -> IO ()
+call_ action arg =
+    do (IO (Next action arg)) <| decodeResult (Decode.succeed ())
 
 
 getArgs : IO (List String)
 getArgs =
-    IO GetArgs
+    call "getArgs" Encode.null (Decode.list Decode.string)
 
 
 getLine : IO String
 getLine =
-    IO GetLine
+    call "getLine" Encode.null Decode.string
 
 
 putStrLn : String -> IO ()
 putStrLn str =
-    IO (PutStrLn str)
+    call_ "putStrLn" (Encode.string str)
 
 
 do_ : IO () -> IO b -> IO b
@@ -86,8 +109,8 @@ step =
 
 
 init : IO () -> Flags -> ( Model, Cmd Msg )
-init program flags =
-    ( unwrap program (\() -> Stop), step )
+init program {} =
+    ( unwrap program (\() -> Stop Nothing), step )
 
 
 type alias Ports =
@@ -99,7 +122,7 @@ type alias Ports =
 subscriptions : Ports -> Model -> Sub Msg
 subscriptions ports model =
     case model of
-        Stop ->
+        Stop _ ->
             Sub.none
 
         _ ->
@@ -109,41 +132,22 @@ subscriptions ports model =
 update : Ports -> Msg -> Model -> ( Model, Cmd Msg )
 update ports msg model =
     case ( model, msg ) of
-        ( Stop, _ ) ->
+        ( Stop Nothing, _ ) ->
             ( model, Cmd.none )
 
-        ( GetArgs next, Perform ) ->
-            ( model, ports.perform { action = "getArgs", arg = Encode.null } )
-
-        ( GetArgs next, Result res ) ->
-            decodeResult ports res (Decode.list Decode.string) next
-
-        ( GetLine next, Perform ) ->
-            ( model, ports.perform { action = "getLine", arg = Encode.null } )
-
-        ( GetLine next, Result res ) ->
-            decodeResult ports res Decode.string next
-
-        ( PutStrLn arg next, Perform ) ->
-            ( model, ports.perform { action = "putStrLn", arg = Encode.string arg } )
-
-        ( PutStrLn arg next, Result res ) ->
-            ( next (), step )
-
-
-decodeResult : Ports -> JsonValue -> Decoder a -> (a -> Model) -> ( Model, Cmd Msg )
-decodeResult ports resVal decoder next =
-    case Decode.decodeValue decoder resVal of
-        Ok res ->
-            ( next res, step )
-
-        Err err ->
-            ( Stop
+        ( Stop (Just err), _ ) ->
+            ( Stop Nothing
             , ports.perform
                 { action = "putStrLn"
-                , arg = Encode.string ("Decode error: " ++ Decode.errorToString err)
+                , arg = Encode.string ("Error: " ++ err)
                 }
             )
+
+        ( Next action arg next, Perform ) ->
+            ( model, ports.perform { action = action, arg = arg } )
+
+        ( Next action arg next, Result res ) ->
+            ( next res, step )
 
 
 type alias Program =

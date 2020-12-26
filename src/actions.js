@@ -8,7 +8,7 @@ function make(sendResult) {
             sendResult(process.argv.slice(2));
         },
 
-        "getLine": () => { 
+        "getLine": () => {
             const rl = readline.createInterface({
                 input: process.stdin,
             });
